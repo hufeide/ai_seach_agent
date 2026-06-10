@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 联网搜索智能体</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div>
+        <h1>AI 联网搜索智能体</h1>
+        <p>LangGraph + SearXNG + Crawl4AI + vLLM + BGE DB</p>
+      </div>
+      <button id="healthBtn" class="ghost">检查服务</button>
+    </header>
+
+    <main class="layout">
+      <section class="panel search-panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="agent">智能搜索</button>
+          <button class="tab" data-tab="sources">只找数据源</button>
+        </div>
+
+        <div class="field">
+          <label for="question">搜索问题 / 关键词</label>
+          <textarea id="question" rows="5" placeholder="例如：最近 LangGraph 有哪些主要能力？"></textarea>
+        </div>
+
+        <div id="agentOptions" class="options">
+          <label>
+            <span>模式</span>
+            <select id="mode">
+              <option value="fast">fast：一轮搜索</option>
+              <option value="deep">deep：信息不足时二次搜索</option>
+            </select>
+          </label>
+        </div>
+
+        <button id="searchBtn" class="primary">开始搜索</button>
+
+        <div id="status" class="status">等待输入。</div>
+
+        <div class="small-box">
+          <h3>使用说明</h3>
+          <p>智能搜索会返回答案和引用来源；只找数据源会直接返回 SearXNG 搜索结果。点击任意来源，可在右侧抓取并查看网页正文。</p>
+        </div>
+      </section>
+
+      <section class="panel answer-panel">
+        <div class="panel-header">
+          <h2>答案</h2>
+          <button id="copyAnswerBtn" class="ghost small">复制答案</button>
+        </div>
+        <div id="answer" class="answer empty">还没有答案。</div>
+
+        <div class="meta-grid">
+          <div>
+            <h3>查询词</h3>
+            <div id="queries" class="chips"></div>
+          </div>
+          <div>
+            <h3>错误 / 提示</h3>
+            <div id="errors" class="errors muted">无</div>
+          </div>
+        </div>
+
+        <div class="panel-header source-header">
+          <h2>数据源</h2>
+          <div class="source-switch">
+            <button id="showEvidenceBtn" class="ghost small active">引用来源</button>
+            <button id="showRawBtn" class="ghost small">搜索结果</button>
+          </div>
+        </div>
+        <div id="sources" class="sources empty">还没有数据源。</div>
+      </section>
+
+      <section class="panel page-panel">
+        <div class="panel-header">
+          <h2>网页内容</h2>
+          <a id="openUrl" class="ghost small hidden" target="_blank" rel="noreferrer">打开原网页</a>
+        </div>
+        <div id="pageInfo" class="page-info muted">点击左侧数据源后，会在这里显示抓取到的网页正文。</div>
+        <pre id="pageContent" class="page-content"></pre>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: ai-search-searxng
+    ports:
+      - "18080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://127.0.0.1:18080/
+      - http_proxy=socks5h://192.168.1.159:10808
+      - https_proxy=socks5h://192.168.1.159:10808
+      - all_proxy=socks5h://192.168.1.159:10808
+      - HTTP_PROXY=socks5h://192.168.1.159:10808
+      - HTTPS_PROXY=socks5h://192.168.1.159:10808
+      - ALL_PROXY=socks5h://192.168.1.159:10808
+      - no_proxy=localhost,127.0.0.1,searxng,host.docker.internal,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8
+      - NO_PROXY=localhost,127.0.0.1,searxng,host.docker.internal,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

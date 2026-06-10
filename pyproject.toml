@@ -1,0 +1,28 @@
+[project]
+name = "ai-search-agent-vllm-bge"
+version = "0.1.0"
+description = "A LangGraph + SearXNG + Crawl4AI + vLLM + BGE vector DB web search agent."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+  "httpx[socks]>=0.27",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.2",
+  "python-dotenv>=1.0",
+  "langgraph>=0.2",
+  "crawl4ai>=0.4"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.5"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
