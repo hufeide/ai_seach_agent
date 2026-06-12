@@ -198,16 +198,19 @@ content:
 title: {page.get('title', '')}
 url: {page.get('url', '')}
 content:
-{content[:4000]}
+{content[:10000]}
 """.strip()
         )
 
     return "\n\n".join(materials)
 
 
+import datetime
+
 async def select_evidence_node(state: SearchAgentState) -> dict[str, Any]:
     question = state["question"]
     materials = _pack_materials(state)
+    today = datetime.date.today().strftime("%Y年%m月%d日")
 
     if not materials.strip():
         return {
@@ -222,6 +225,8 @@ async def select_evidence_node(state: SearchAgentState) -> dict[str, Any]:
 """.strip()
 
     user = f"""
+今天日期：{today}
+
 用户问题：
 {question}
 
@@ -291,6 +296,7 @@ async def answer_node(state: SearchAgentState) -> dict[str, Any]:
     question = state["question"]
     evidence = state.get("evidence", [])
     errors = state.get("errors", [])
+    today = datetime.date.today().strftime("%Y年%m月%d日")
 
     system = """
 你是一个联网搜索智能体。请用中文回答。
@@ -302,6 +308,8 @@ async def answer_node(state: SearchAgentState) -> dict[str, Any]:
 """.strip()
 
     user = f"""
+今天日期：{today}
+
 用户问题：
 {question}
 
@@ -318,7 +326,7 @@ async def answer_node(state: SearchAgentState) -> dict[str, Any]:
             {"role": "user", "content": user},
         ],
         temperature=0.2,
-        max_tokens=3072,
+        max_tokens=50000,
     )
 
     return {"answer": answer}
