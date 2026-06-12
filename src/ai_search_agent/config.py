@@ -6,9 +6,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Proxy
-    http_proxy: str = "socks5://192.168.1.159:10808"
-    https_proxy: str = "socks5://192.168.1.159:10808"
-    no_proxy: str = "localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8"
+    http_proxy: str = "http://127.0.0.1:8118"
+    https_proxy: str = "http://127.0.0.1:8118"
+    no_proxy: str = "localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
 
     # vLLM OpenAI-compatible API
     vllm_base_url: str = "http://127.0.0.1:8000/v1"
@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     )
 
     # BGE vector DB / retrieval service
+    bge_url: str = "http://172.16.50.167:10080"
+    bge_model: str = "BAAI/bge-m3"
     bge_db_base_url: str = "http://127.0.0.1:9000"
     bge_db_api_key: str = ""
     bge_db_upsert_path: str = "/upsert"
@@ -36,6 +38,7 @@ class Settings(BaseSettings):
     bge_db_enabled: bool = True
     bge_db_collection: str = "web_search"
     bge_db_top_k: int = 8
+    bge_db_path: str = "./data/milvus_lite.db"
 
     # Agent behavior
     max_search_results: int = 10

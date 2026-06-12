@@ -18,4 +18,11 @@ export no_proxy="$NO_PROXY"
 
 export PYTHONPATH="${PYTHONPATH:-}:$(pwd)/src"
 
-uvicorn ai_search_agent.api:app --host 0.0.0.0 --port 18000 --reload
+# Debug mode: enable debugpy for VSCode debugging
+if [[ "${1:-}" == "--debug" ]]; then
+  echo "Starting in DEBUG mode..."
+  export DEBUG=1
+  python -m debugpy --listen 0.0.0.0:5678 -m uvicorn ai_search_agent.api:app --host 0.0.0.0 --port 18000 --reload
+else
+  uvicorn ai_search_agent.api:app --host 0.0.0.0 --port 18000 --reload
+fi

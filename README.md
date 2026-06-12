@@ -407,4 +407,5 @@ curl -X POST http://127.0.0.1:8001/fetch-page \
 
 cd /home/aixz/data/hxf/bigmodel/ai_code/ai-search-agent-vllm-bge
 source .venv/bin/activate
+sudo ./scripts/setup_privoxy.sh 10808
 bash scripts/run_api.sh

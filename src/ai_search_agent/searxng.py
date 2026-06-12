@@ -10,6 +10,7 @@ async def search_web(query: str) -> list[dict[str, Any]]:
         "format": "json",
         "language": "auto",
         "safesearch": 0,
+        "num_results": settings.max_search_results,
     }
 
     async with async_client(settings.searxng_timeout_seconds) as client:
@@ -22,19 +23,17 @@ async def search_web(query: str) -> list[dict[str, Any]]:
         resp.raise_for_status()
         data = resp.json()
 
-    items: list[dict[str, Any]] = []
-    for r in data.get("results", []):
-        url = r.get("url")
-        if not url:
-            continue
-        items.append(
-            {
-                "title": r.get("title") or "",
-                "url": url,
-                "snippet": r.get("content") or "",
-                "engine": r.get("engine") or "",
-                "score": float(r.get("score") or 0),
-            }
-        )
+    results = data.get("results", [])
+    max_results = settings.max_search_results
 
-    return items[: settings.max_search_results]
+    return [
+        {
+            "title": r.get("title") or "",
+            "url": r.get("url"),
+            "snippet": r.get("content") or "",
+            "engine": r.get("engine") or "",
+            "score": float(r.get("score") or 0),
+        }
+        for r in results
+        if r.get("url")
+    ][:max_results]

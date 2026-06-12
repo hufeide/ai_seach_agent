@@ -1,71 +1,133 @@
+import os
 from typing import Any
 
 from .config import settings
 from .http_client import async_client
-from .text import chunk_text, stable_id
+from .text import chunk_text
 
 
-class BGEVectorDBClient:
-    """HTTP adapter for your self-hosted BGE vector database / retrieval service.
+async def get_embeddings(texts: list[str]) -> list[list[float]]:
+    """Get embeddings from BGE API."""
+    if not texts:
+        return []
 
-    Expected API:
-
-    POST /upsert
-    {
-      "collection": "web_search",
-      "documents": [
-        {
-          "id": "...",
-          "text": "...",
-          "metadata": {"title": "...", "url": "...", "source": "web"}
-        }
-      ]
+    url = f"{settings.bge_url.rstrip('/')}/v1/embeddings"
+    payload = {
+        "model": settings.bge_model,
+        "input": texts,
     }
 
-    POST /search
-    {
-      "collection": "web_search",
-      "query": "user question",
-      "top_k": 8,
-      "filters": {}
-    }
+    async with async_client(30, trust_env=False) as client:
+        resp = await client.post(url, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
 
-    Expected search response, either shape is accepted:
-    {
-      "results": [
-        {
-          "id": "...",
-          "text": "...",
-          "score": 0.87,
-          "metadata": {"title": "...", "url": "..."}
-        }
-      ]
-    }
+    return [item["embedding"] for item in data.get("data", [])]
 
-    or directly:
-    [
-      {"id": "...", "text": "...", "score": 0.87, "metadata": {...}}
-    ]
-    """
+
+class MilvusLiteClient:
+    """Milvus Lite client - stores vectors in local file."""
 
     def __init__(self) -> None:
-        self.base_url = settings.bge_db_base_url.rstrip("/")
+        self.db_path = settings.bge_db_path or "./data/milvus_lite.db"
+        self.collection_name = settings.bge_db_collection or "web_search"
+        self._client = None
+        self._initialized = False
 
-    @property
-    def enabled(self) -> bool:
-        return settings.bge_db_enabled
+    def _init(self) -> None:
+        """Initialize Milvus Lite and create collection if needed."""
+        if self._initialized:
+            return
 
-    def _headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
-        if settings.bge_db_api_key:
-            headers["Authorization"] = f"Bearer {settings.bge_db_api_key}"
-        return headers
+        try:
+            from pymilvus import MilvusClient, CollectionSchema, FieldSchema, DataType
+        except ImportError:
+            raise ImportError("milvus-lite not installed: pip install milvus-lite")
+
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
+
+        # Create Milvus Client (local file)
+        self._client = MilvusClient(self.db_path)
+
+        # Check if collection exists, if not create it with full schema
+        if not self._client.has_collection(self.collection_name):
+            # BGE-m3 is 1024 dimensions
+            dim = 1024
+            fields = [
+                FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+                FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
+                FieldSchema(name="metadata", dtype=DataType.VARCHAR, max_length=65535),
+                FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dim),
+            ]
+            schema = CollectionSchema(fields, description=f"{self.collection_name} collection")
+            self._client.create_collection(
+                collection_name=self.collection_name,
+                schema=schema,
+                metric_type="IP",
+            )
+        else:
+            # Collection exists - check if we need to drop and recreate due to schema mismatch
+            # Try to get collection info and verify schema
+            try:
+                coll_info = self._client.describe_collection(self.collection_name)
+                fields_dict = {f["name"]: f for f in coll_info.get("fields", [])}
+
+                # Check if id field exists and has auto_id enabled
+                if "id" in fields_dict:
+                    id_field = fields_dict["id"]
+                    if not id_field.get("auto_id", False):
+                        # Schema mismatch - id field requires manual value
+                        # Drop and recreate with correct schema
+                        print(f"Warning: Dropping collection '{self.collection_name}' due to schema mismatch (auto_id=False)")
+                        self._client.drop_collection(self.collection_name)
+
+                        dim = 1024
+                        fields = [
+                            FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+                            FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
+                            FieldSchema(name="metadata", dtype=DataType.VARCHAR, max_length=65535),
+                            FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dim),
+                        ]
+                        schema = CollectionSchema(fields, description=f"{self.collection_name} collection")
+                        self._client.create_collection(
+                            collection_name=self.collection_name,
+                            schema=schema,
+                            metric_type="IP",
+                        )
+            except Exception as e:
+                print(f"Warning: Could not verify collection schema: {e}")
+
+        # Create index if not exists
+        try:
+            self._client.create_index(
+                collection_name=self.collection_name,
+                field_name="vector",
+                index_type="IVF_FLAT",
+                metric_type="IP",
+                params={"nlist": 128},
+            )
+        except Exception:
+            pass  # Index might already exist
+
+        self._initialized = True
 
     async def upsert_pages(self, pages: list[dict[str, Any]]) -> dict[str, Any]:
-        if not self.enabled:
+        """Index pages into Milvus Lite."""
+        if not settings.bge_db_enabled:
             return {"ok": False, "reason": "bge_db_disabled"}
 
-        documents: list[dict[str, Any]] = []
+        if not pages:
+            return {"ok": False, "reason": "no_pages"}
+
+        self._init()
+
+        try:
+            from pymilvus import MilvusClient
+        except ImportError:
+            return {"ok": False, "error": "milvus-lite not installed"}
+
+        documents = []
         for page in pages:
             url = page.get("url") or ""
             title = page.get("title") or ""
@@ -76,33 +138,44 @@ class BGEVectorDBClient:
             for idx, chunk in enumerate(chunk_text(content), start=1):
                 documents.append(
                     {
-                        "id": stable_id(f"{url}#{idx}"),
                         "text": chunk,
-                        "metadata": {
-                            "title": title,
-                            "url": url,
-                            "chunk_index": idx,
-                            "source": "web",
-                        },
+                        "metadata": f"{title}|{url}",
                     }
                 )
 
         if not documents:
             return {"ok": False, "reason": "no_documents"}
 
-        payload = {
-            "collection": settings.bge_db_collection,
-            "documents": documents,
-        }
-        url = f"{self.base_url}{settings.bge_db_upsert_path}"
+        # Get embeddings from BGE API
+        all_texts = [d["text"] for d in documents]
+        embeddings = await get_embeddings(all_texts)
 
-        async with async_client(settings.bge_db_timeout_seconds) as client:
-            resp = await client.post(url, json=payload, headers=self._headers())
-            resp.raise_for_status()
-            try:
-                return resp.json()
-            except Exception:
-                return {"ok": True, "status_code": resp.status_code}
+        if not embeddings:
+            return {"ok": False, "error": "failed to get embeddings"}
+
+        # Insert in batches using MilvusClient
+        client = self._client
+        batch_size = 100
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i : i + batch_size]
+            emb_batch = embeddings[i : i + batch_size]
+
+            # Build list of row dictionaries (each row is a dict with single values)
+            rows = []
+            for doc, vec in zip(batch, emb_batch):
+                rows.append({
+                    "text": doc["text"],
+                    "metadata": doc["metadata"],
+                    "vector": [float(x) for x in vec],
+                })
+
+            client.insert(
+                collection_name=self.collection_name,
+                data=rows,
+            )
+
+        # Flush to ensure data is searchable
+        client.flush(self.collection_name)
 
     async def search(
         self,
@@ -111,37 +184,70 @@ class BGEVectorDBClient:
         top_k: int | None = None,
         filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        if not self.enabled:
+        """Search Milvus Lite."""
+        if not settings.bge_db_enabled:
             return []
 
-        payload = {
-            "collection": settings.bge_db_collection,
-            "query": query,
-            "top_k": top_k or settings.bge_db_top_k,
-            "filters": filters or {},
-        }
-        url = f"{self.base_url}{settings.bge_db_search_path}"
+        self._init()
 
-        async with async_client(settings.bge_db_timeout_seconds) as client:
-            resp = await client.post(url, json=payload, headers=self._headers())
-            resp.raise_for_status()
-            data = resp.json()
+        try:
+            from pymilvus import MilvusClient
+        except ImportError:
+            return []
 
-        raw_results = data.get("results", data) if isinstance(data, dict) else data
-        normalized: list[dict[str, Any]] = []
-        for item in raw_results or []:
-            metadata = item.get("metadata") or {}
-            normalized.append(
-                {
-                    "id": item.get("id"),
-                    "title": item.get("title") or metadata.get("title") or "",
-                    "url": item.get("url") or metadata.get("url") or "",
-                    "text": item.get("text") or item.get("content") or "",
-                    "score": item.get("score", 0),
-                    "metadata": metadata,
-                }
-            )
+        client = self._client
+
+        # Ensure collection is loaded for search (with error handling)
+        try:
+            client.load_collection(self.collection_name)
+        except Exception:
+            pass  # Collection may already be loaded or not have data
+
+        top_k = top_k or settings.bge_db_top_k
+
+        # Get query embedding
+        embeddings = await get_embeddings([query])
+        if not embeddings:
+            return []
+
+        query_vector = [list(embeddings[0])]
+
+        results = client.search(
+            collection_name=self.collection_name,
+            data=query_vector,
+            anns_field="vector",
+            limit=top_k,
+            output_fields=["text", "metadata"],
+        )
+
+        if not results or not results[0]:
+            return []
+
+        normalized = []
+        for hits in results:
+            for hit in hits:
+                # 兼容新版本 pymilvus API
+                entity = getattr(hit, 'entity', None)
+                if entity:
+                    metadata = entity.get("metadata", "") or ""
+                    text = entity.get("text", "") or ""
+                else:
+                    # 旧版本 API 兼容
+                    data = getattr(hit, '_data', {})
+                    metadata = data.get("metadata", "") if isinstance(data, dict) else ""
+                    text = data.get("text", "") if isinstance(data, dict) else ""
+                
+                title, url = metadata.split("|") if "|" in metadata else ("", "")
+                normalized.append(
+                    {
+                        "title": title,
+                        "url": url,
+                        "text": text,
+                        "score": hit.score,
+                    }
+                )
+
         return normalized
 
 
-bge_db = BGEVectorDBClient()
+bge_db = MilvusLiteClient()

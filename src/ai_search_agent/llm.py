@@ -4,7 +4,7 @@ from typing import Any
 
 from .config import settings
 from .http_client import async_client
-
+from json_repair import repair_json
 
 class VLLMClient:
     """Tiny OpenAI-compatible client for vLLM /v1/chat/completions."""
@@ -70,17 +70,9 @@ class VLLMClient:
             max_tokens=max_tokens,
             json_mode=True,
         )
-        return _loads_json_object(content)
-
-
-def _loads_json_object(content: str) -> dict[str, Any]:
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", content, re.S)
-        if not match:
-            raise
-        return json.loads(match.group(0))
+        content = repair_json(content, return_objects=True)
+        # Ensure we always return a dict, not None
+        return content if isinstance(content, dict) else {}
 
 
 llm = VLLMClient()
