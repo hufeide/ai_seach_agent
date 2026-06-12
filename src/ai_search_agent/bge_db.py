@@ -237,7 +237,8 @@ class MilvusLiteClient:
                     metadata = data.get("metadata", "") if isinstance(data, dict) else ""
                     text = data.get("text", "") if isinstance(data, dict) else ""
                 
-                title, url = metadata.split("|") if "|" in metadata else ("", "")
+                parts = metadata.split("|", 1) if "|" in metadata else ["", ""]
+                title, url = parts[0], parts[1] if len(parts) > 1 else ""
                 normalized.append(
                     {
                         "title": title,
