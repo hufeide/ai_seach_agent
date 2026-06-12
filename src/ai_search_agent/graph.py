@@ -250,7 +250,7 @@ async def select_evidence_node(state: SearchAgentState) -> dict[str, Any]:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=0,
+            temperature=0.4,
         )
     except Exception as exc:
         return {
